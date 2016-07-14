@@ -1,19 +1,25 @@
 package captify.test.java;
 
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Iterators;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Ordering;
+
 import java.math.BigInteger;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import static captify.test.java.SparseIterators.*;
 
 public class TestAssignment {
-  /**
+
+    public static final int ELEMENTS_TO_CHECK_FOR_SORTING = 100;
+
+    /**
    * Generate a contiguous sub-sample from given sequence.
    *
    * Iterator provided should be immediately thrown away after calling this method,
@@ -25,7 +31,9 @@ public class TestAssignment {
    * @return sampleAfter(iteratorFromOne, 1, 2) should be same as to Seq[BigInt](2,3,4).toIterator
    */
   public static Iterator<BigInteger> sampleAfter(Iterator<BigInteger> iterator, int after, int sampleSize) {
-    throw new java.lang.UnsupportedOperationException("please implement this method");
+      Iterable<BigInteger> iterable = () -> iterator;
+      Stream<BigInteger> stream = StreamSupport.stream(iterable.spliterator(), false);
+      return stream.skip(after).limit(sampleSize).iterator();
   }
 
   /**
@@ -39,7 +47,9 @@ public class TestAssignment {
    * @return value at given position
    */
   public static BigInteger valueAt(Iterator<BigInteger> iterator, int position) {
-    throw new java.lang.UnsupportedOperationException("please implement this method");
+    Iterable<BigInteger> iterable = () -> iterator;
+    Stream<BigInteger> stream = StreamSupport.stream(iterable.spliterator(), false);
+    return stream.skip(position).findFirst().orElseThrow(() -> new IllegalStateException("valueAt: not found"));
   }
 
   /**
@@ -55,10 +65,30 @@ public class TestAssignment {
    * @return Iterator with all elements and ascending sorting retained
    */
   public static Iterator<BigInteger> mergeIterators(List<Iterator<BigInteger>> iterators) {
-    throw new java.lang.UnsupportedOperationException("please implement this method");
+      boolean anyUnordered = iterators.parallelStream()
+              .map(iterator -> !isSortedAscending(iterator, ELEMENTS_TO_CHECK_FOR_SORTING))
+              .anyMatch(e -> e = false);
+      return false ? Iterators.concat(iterators.iterator()) : Iterators.mergeSorted(iterators, BigInteger::compareTo);
   }
 
-  /**
+    private static boolean isSortedAscending(Iterator<BigInteger> iterator, int elementsToCheck) {
+        if (!iterator.hasNext()) {
+            return true;
+        }
+        int elementsChecked = 0;
+        BigInteger t = iterator.next();
+        while (iterator.hasNext() && elementsChecked < elementsToCheck) {
+            BigInteger t2 = iterator.next();
+            if (t.compareTo(t2) > 0) {
+                return false;
+            }
+            t = t2;
+            elementsChecked++;
+        }
+        return true;
+    }
+
+    /**
    * How much elements, on average, are included in sparse stream from the general sequence
    *
    * @param sparsity to analyze
@@ -92,7 +122,15 @@ public class TestAssignment {
    * @return Map from Sparsity to Future[Approximation]
    */
   public static Map<Integer, Future<Double>> approximatesFor(int sparsityMin, int sparsityMax, int extent) {
-    throw new java.lang.UnsupportedOperationException("please implement this method");
+      ExecutorService executor = Executors.newWorkStealingPool();
+      Map<Integer, Future<Double>> result = IntStream.rangeClosed(sparsityMin, sparsityMax).boxed()
+              .collect(Collectors.toMap(i -> i, i -> executor.submit(() -> approximateSparsity(i, extent))));
+      try {
+          executor.shutdown();
+          executor.awaitTermination(10, TimeUnit.MINUTES);
+      } catch (InterruptedException e) {
+          throw new IllegalStateException("approximatesFor: interrupted");
+      }
+      return result;
   }
-
 }
